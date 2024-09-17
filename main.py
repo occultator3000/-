@@ -404,6 +404,8 @@ class MainWindow(QWidget):
         主窗体初始化
         """
         super(MainWindow, self).__init__()
+         # 设置窗口标题
+        self.setWindowTitle("羊了个羊小游戏")
 
         self.pic_box = PicBox()
         self.game_region = QFrame()
