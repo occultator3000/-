@@ -1,13 +1,14 @@
 from collections import defaultdict
 import sys
 from typing import List, Dict
+import time
 
 import cv2
 import numpy as np
 from PyQt5 import QtGui
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QApplication, QPushButton, QWidget, QFrame, QLabel, QMessageBox,QHBoxLayout,QVBoxLayout
-from PyQt5.QtCore import pyqtSignal, pyqtBoundSignal
+from PyQt5.QtCore import pyqtSignal, pyqtBoundSignal,QTimer
 
 
 from read_resource import read_stuffs, Stuff
@@ -61,6 +62,8 @@ class Game:
     """
 
     def __init__(self):
+        self.time_limit = 120  # 设定游戏时间限制为120秒
+        self.start_time = time.time()  # 记录游戏开始的时间
         self.cube_total_count = 20 * 3  # 一共多少个方块
 
         self.max_move_up_cube_nums = 3  # 点击按钮最多会有多少方块移动到空白区域
@@ -91,6 +94,15 @@ class Game:
         self.move_up_cubes_tile_offset_y = 0
 
         self.top_cubes = []
+
+    def update_time(self):
+        # 更新倒计时时间
+        current_time = time.time()
+        self.remaining_time = self.time_limit - int(current_time - self.start_time)
+        if self.remaining_time <= 0:
+            self.remaining_time = 0
+            return False  # 时间结束
+        return True
 
     def get_init_move_up_positions(self):
         """
@@ -412,7 +424,7 @@ class MainWindow(QWidget):
         self.button_region = QFrame()
 
         self.button_left_right_margin = 200
-        self.button_width = 400
+        self.button_width = 300
         self.button_height = 400
 
         self.pic_box_width = 1000
@@ -432,7 +444,12 @@ class MainWindow(QWidget):
         self.init_pic_box()  # pic box属于game region
         self.init_button_region()
 
-        self.game = None
+        # 定义定时器
+        self.game = Game()
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_ui)
+        self.timer.start(1000)  # 每1000毫秒（即1秒）触发一次
+
         self.restart_game()
 
         # 使用垂直布局将 game_region 和 button_region 垂直排列
@@ -443,46 +460,56 @@ class MainWindow(QWidget):
 
         print('init game')
 
+    def update_ui(self):
+        """更新用户界面，包括时间显示和可能的其他元素"""
+        if not self.game.update_time():
+            self.timer.stop()  # 如果时间结束，停止定时器
+            QMessageBox.information(self, "Time's Up", "You've run out of time!")
+        self.timer_label.setText(f"Time left: {self.game.remaining_time} seconds")
+
     def init_button_region(self):
         """
         初始化按钮区域，设置按钮颜色和水平布局
         """
-        button_layout = QHBoxLayout(self.button_region)  # 使用水平布局
+        self.button_layout = QHBoxLayout()  # 使用水平布局
+        self.button_region.setLayout(self.button_layout)  # 将布局设置给按钮区
         self.button_region.setFixedSize(self.pic_box_width, self.pic_button_region_height)  # 设置按钮区域大小
-        button_layout.setSpacing(20)  # 设置按钮之间的水平间距为20像素
+        self.button_layout.setSpacing(20)  # 设置按钮之间的水平间距为20像素
+
+        # 初始化倒计时标签并设置样式
+        self.timer_label = QLabel('Time left: 120s', self)
+        self.timer_label.setStyleSheet('font-size: 19px; color: red; font-weight: bold;')
+        self.button_layout.addWidget(self.timer_label)  # 添加倒计时标签到布局中
 
         # 设置剩余数量的标签
-        self.remainder_label.setText('Remainning Quantity：')
+        self.remainder_label.setText('Remaining Quantity：')
         self.remainder_label.setStyleSheet('font-size: 44px;')
-        button_layout.addWidget(self.remainder_label)
+        self.button_layout.addWidget(self.remainder_label)
 
         # 设置移除3个方块的按钮
-        self.move_up_cubes_button.setText('Remove \n 3 Cubes')
+        self.move_up_cubes_button.setText('Move up \n 3 Cubes')
         self.move_up_cubes_button.clicked.connect(self.move_up_cubes)
         self.move_up_cubes_button.setStyleSheet("background-color: lightpink; font-size: 24px; padding: 18px;")
-        button_layout.addWidget(self.move_up_cubes_button)
+        self.button_layout.addWidget(self.move_up_cubes_button)
 
         # 设置打乱按钮
-        self.shuffle_button.setText('Break Rank')
+        self.shuffle_button.setText('Shuffle')
         self.shuffle_button.clicked.connect(self.shuffle_cur_cubes_category)
         self.shuffle_button.setStyleSheet("background-color: thistle; font-size: 28px; padding: 28px;")
-        button_layout.addWidget(self.shuffle_button)
+        self.button_layout.addWidget(self.shuffle_button)
 
         # 设置重启按钮
         self.restart_button.setText('Restart')
         self.restart_button.clicked.connect(self.restart_game)
         self.restart_button.setStyleSheet("background-color: thistle; font-size: 28px; padding: 28px;")
-        button_layout.addWidget(self.restart_button)
+        self.button_layout.addWidget(self.restart_button)
 
         # 设置退出按钮
         self.quit_button = QPushButton(self.button_region)  # 定义 quit_button
         self.quit_button.setText('Exit')
         self.quit_button.clicked.connect(QApplication.quit)
         self.quit_button.setStyleSheet("background-color: lightpink; font-size: 28px; padding: 28px;")
-        button_layout.addWidget(self.quit_button)  # 确保按钮被添加到布局中
-
-        # 设置水平布局到按钮区域
-        self.button_region.setLayout(button_layout)
+        self.button_layout.addWidget(self.quit_button)  # 确保按钮被添加到布局中
 
     def shuffle_cur_cubes_category(self):
         """
@@ -492,6 +519,16 @@ class MainWindow(QWidget):
         self.game.shuffle_cur_cubes_category()
         self.show_cur_game()
 
+    def update_timer_display(self):
+        """更新时间显示"""
+        if self.game.remaining_time > 0:
+            self.game.remaining_time -= 1
+            self.timer_label.setText(f'Time left: {self.game.remaining_time} seconds')
+        else:
+            self.timer.stop()
+            QMessageBox.information(self, "Time's Up", "You've run out of time!")
+            self.restart_game()
+
     def restart_game(self):
         """
         重启游戏
@@ -500,6 +537,9 @@ class MainWindow(QWidget):
         self.game = Game()
         self.game.random_cubes()
         self.show_cur_game()
+        self.game.start_time = time.time()  # 重设游戏开始时间
+        if not self.timer.isActive():
+            self.timer.start(1000)  # 重新开始倒计时
 
     def show_cur_game(self):
         """
